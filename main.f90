@@ -6,7 +6,7 @@ module global_variables
   integer :: nx, nt
   real(8) :: length_x, dx
   real(8) :: Tprop, dt
-  real(8),allocatable :: rho(:), Dx(:)
+  real(8),allocatable :: rho(:), Diff_x(:)
   real(8) :: D_coeff, tau
   
   
@@ -31,7 +31,7 @@ subroutine input_variables
   nx = 64
   dx = length_x/nx
 
-  Tprop = 100d0
+  Tprop = 1000d0
   dt = 0.1d0
   nt = aint(Tprop/dt)+1
   
@@ -45,9 +45,9 @@ subroutine initialize
 
   
   D_coeff = 1d0
-  tau = 1d40
+  tau = 100d0
 
-  allocate(rho(0:nx-1), Dx(0:nx-1))
+  allocate(rho(0:nx-1), Diff_x(0:nx-1))
 
   do ix = 0, nx-1
      xx = dx*ix
@@ -59,9 +59,9 @@ end subroutine initialize
 subroutine time_propagation
   use global_variables
   implicit none
-  integer :: it
+  integer :: it, ix
   character(256) :: cit, cfilename
-  real(8) :: n0, n1, n2
+  real(8) :: n0, n1, n2, n3
 
   it = 0
   write(cit, "(I7.7)")it
@@ -82,7 +82,7 @@ subroutine time_propagation
      write(30,"(999e26.16e3)")dt*(it+1),n0,n1,n2,n3     
 
      if(mod(it+1,100)==0)then
-        write(cit, "(I7.7)")it
+        write(cit, "(I7.7)")it+1
         cfilename = trim(cit)//"_rho.out"
         open(20,file=cfilename)
         do ix = 0, nx-1
@@ -100,10 +100,12 @@ end subroutine time_propagation
 subroutine dt_evolve
   use global_variables
   implicit none
-  real(8) :: vec1_t(0:nx-1),vec2_t(0:nx-1)
+  real(8),parameter :: alpha = 0d0, beta = 0.1d0
+  real(8) :: vec1_t(0:nx-1),vec2_t(0:nx-1), tau_eff(0:nx-1)
   integer :: ix
 
-  Dx = D_coeff
+  Diff_x = D_coeff + alpha*rho
+  tau_eff = 1d0/(1d0/tau + beta*rho)
 
 
   vec1_t(0) = 0.5d0*(rho(1)-rho(nx-1))/dx
@@ -112,7 +114,7 @@ subroutine dt_evolve
   end do
   vec1_t(nx-1) = 0.5d0*(rho(0)-rho(nx-2))/dx
 
-  vec1_t = Dx*vec1_t
+  vec1_t = Diff_x*vec1_t
 
   vec2_t(0) = 0.5d0*(vec1_t(1)-vec1_t(nx-1))/dx
   do ix = 1, nx-2
@@ -120,15 +122,15 @@ subroutine dt_evolve
   end do
   vec2_t(nx-1) = 0.5d0*(vec1_t(0)-vec1_t(nx-2))/dx
 
-  rho = vec2_t
+  rho = rho+ dt*vec2_t - rho*dt/tau_eff
   
   
 end subroutine dt_evolve
 !------------------------------------------------------------------------------
-subroutine calc_dft(n0,n1,n2)
+subroutine calc_dft(n0,n1,n2,n3)
   use global_variables
   implicit none
-  real(8),intent(out) :: n0,n1,n2
+  real(8),intent(out) :: n0,n1,n2,n3
   integer,parameter :: np = 3
   complex(8) :: zn(0:np)
   integer :: ix, n
